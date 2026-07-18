@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deploy Skill as Agent"
+  short_description: "Turn a skill into a Dockerized LLM agent"
+  default_prompt: "Use $deploy-skill-as-agent to package a local or GitHub skill as a runnable Docker agent."
