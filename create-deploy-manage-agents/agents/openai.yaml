@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create, Deploy, and Manage Agents"
+  short_description: "Turn a skill or ADK/CrewAI/Claude agent into a Docker agent"
+  default_prompt: "Use $create-deploy-manage-agents to package a skill or an ADK, CrewAI, or Claude Agent SDK agent as a runnable agent on Docker or a Docker Sandboxes microVM."

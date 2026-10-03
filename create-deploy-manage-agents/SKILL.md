@@ -1,9 +1,9 @@
 ---
-name: deploy-skill-as-agent
+name: create-deploy-manage-agents
 description: Package a skill (SKILL.md, local or GitHub) or an existing agent built with Google ADK, CrewAI, or the Anthropic Claude Agent SDK into a runnable, Dockerized agent service, run either as a plain Docker container or inside a Docker Sandboxes microVM. Use when a user asks to containerize, serve, deploy, expose through HTTP or CLI, or turn a skill or agent project into a deployable agent using Gemini, Ollama, OpenAI, or Anthropic Claude. Gather the source, runtime, model provider, input/output contract, data stores, and required API keys; assess portability and safety before generating code; decline or explain remediation when the source cannot be safely or faithfully deployed this way.
 ---
 
-# Deploy a skill or agent as a Docker agent
+# Create, deploy, and manage agents
 
 Produce a complete deployment package, not only a Dockerfile or architecture description. Keep secrets out of source, images, logs, and committed environment files.
 

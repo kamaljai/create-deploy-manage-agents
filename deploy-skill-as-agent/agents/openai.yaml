@@ -1,4 +1,0 @@
-interface:
-  display_name: "Deploy Skill as Agent"
-  short_description: "Turn a skill or ADK/CrewAI/Claude agent into a Docker agent"
-  default_prompt: "Use $deploy-skill-as-agent to package a skill or an ADK, CrewAI, or Claude Agent SDK agent as a runnable agent on Docker or a Docker Sandboxes microVM."
