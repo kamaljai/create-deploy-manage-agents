@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inventory a skill and flag portability risks without executing source files."""
+"""Inventory a skill or agent project and flag portability risks without executing source files."""
 
 from __future__ import annotations
 
@@ -62,6 +62,13 @@ PATTERNS: dict[str, tuple[str, ...]] = {
         r"(?:~|\$HOME|/Users/|/home/)",
         r"[A-Za-z]:\\\\",
     ),
+    "data_store_reference": (
+        r"\b(?:postgres(?:ql)?|psycopg|asyncpg|mysql|sqlite3?|sqlalchemy|mongo(?:db)?|redis)\b",
+        r"\b(?:chroma(?:db)?|pinecone|qdrant|weaviate|pgvector|faiss|lancedb|milvus)\b",
+        r"\b(?:bigquery|firestore|spanner|alloydb|dynamodb|cosmos(?:db)?|snowflake)\b",
+        r"\b(?:s3://|gs://|boto3|google\.cloud\.storage|azure\.storage)\b",
+        r"\b(?:DATABASE_URL|REDIS_URL|MONGO(?:DB)?_URI)\b",
+    ),
     "credential_reference": (
         r"\b[A-Z][A-Z0-9_]*(?:API_KEY|TOKEN|SECRET|PASSWORD)\b",
         r"\b(?:api[_-]?key|access[_-]?token|client[_-]?secret)\b",
@@ -69,9 +76,33 @@ PATTERNS: dict[str, tuple[str, ...]] = {
 }
 
 
+FRAMEWORK_PATTERNS: dict[str, tuple[str, ...]] = {
+    "adk": (
+        r"\bfrom google\.adk\b",
+        r"\bimport google\.adk\b",
+        r"\bgoogle-adk\b",
+        r"\broot_agent\s*=",
+    ),
+    "crewai": (r"\bfrom crewai\b", r"\bimport crewai\b", r"@CrewBase\b", r"^\s*crewai\b"),
+    "claude-agent-sdk": (
+        r"\bclaude_agent_sdk\b",
+        r"@anthropic-ai/claude-agent-sdk",
+        r"\bclaude-agent-sdk\b",
+        r"\bClaudeAgentOptions\b",
+    ),
+}
+ENV_VAR_PATTERNS = (
+    r"os\.(?:getenv|environ\.get)\(\s*[\"']([A-Z][A-Z0-9_]+)[\"']",
+    r"os\.environ\[\s*[\"']([A-Z][A-Z0-9_]+)[\"']\s*\]",
+    r"process\.env\.([A-Z][A-Z0-9_]+)",
+    r"process\.env\[\s*[\"']([A-Z][A-Z0-9_]+)[\"']\s*\]",
+)
+ENV_FILE_NAMES = {".env.example", ".env.sample", ".env.template", "env.example"}
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("skill_directory", type=Path)
+    parser.add_argument("source_directory", type=Path, help="Skill or agent project directory")
     parser.add_argument("--pretty", action="store_true", help="Indent JSON output")
     return parser.parse_args()
 
@@ -84,14 +115,40 @@ def iter_files(root: Path) -> list[Path]:
     )
 
 
-def scan_text(path: Path) -> dict[str, list[int]]:
-    if path.suffix.lower() not in TEXT_SUFFIXES or path.stat().st_size > MAX_SCAN_BYTES:
-        return {}
+def read_text(path: Path) -> str | None:
+    is_env_file = path.name in ENV_FILE_NAMES
+    if (path.suffix.lower() not in TEXT_SUFFIXES and not is_env_file) or (
+        path.stat().st_size > MAX_SCAN_BYTES
+    ):
+        return None
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        return path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return {}
+        return None
 
+
+def detect_kinds(root: Path, texts: dict[Path, str]) -> list[str]:
+    kinds = ["skill"] if (root / "SKILL.md").is_file() else []
+    for kind, expressions in FRAMEWORK_PATTERNS.items():
+        regexes = [re.compile(expression, re.MULTILINE) for expression in expressions]
+        if any(regex.search(text) for text in texts.values() for regex in regexes):
+            kinds.append(kind)
+    return kinds
+
+
+def env_var_names(texts: dict[Path, str]) -> list[str]:
+    """Names only; values are never read from env files."""
+    names: set[str] = set()
+    for path, text in texts.items():
+        if path.name in ENV_FILE_NAMES:
+            names.update(re.findall(r"^\s*([A-Z][A-Z0-9_]+)\s*=", text, re.MULTILINE))
+            continue
+        for expression in ENV_VAR_PATTERNS:
+            names.update(re.findall(expression, text))
+    return sorted(names)
+
+
+def scan_text(text: str) -> dict[str, list[int]]:
     matches: dict[str, list[int]] = {}
     for category, expressions in PATTERNS.items():
         lines: set[int] = set()
@@ -106,16 +163,19 @@ def scan_text(path: Path) -> dict[str, list[int]]:
 
 def main() -> int:
     args = parse_args()
-    root = args.skill_directory.expanduser().resolve()
-    skill_md = root / "SKILL.md"
-    if not root.is_dir() or not skill_md.is_file():
-        raise SystemExit(f"Not a skill directory (missing SKILL.md): {root}")
+    root = args.source_directory.expanduser().resolve()
+    if not root.is_dir():
+        raise SystemExit(f"Not a directory: {root}")
 
     files = iter_files(root)
+    texts = {path: text for path in files if (text := read_text(path)) is not None}
+    kinds = detect_kinds(root, texts)
     suffixes = Counter(path.suffix.lower() or "[no extension]" for path in files)
     findings: list[dict[str, object]] = []
-    for path in files:
-        categories = scan_text(path)
+    for path, text in texts.items():
+        if path.name in ENV_FILE_NAMES:
+            continue
+        categories = scan_text(text)
         if categories:
             findings.append(
                 {
@@ -135,7 +195,9 @@ def main() -> int:
         if path.suffix.lower() not in TEXT_SUFFIXES or path.stat().st_size > MAX_SCAN_BYTES
     ]
     report = {
-        "skill_directory": str(root),
+        "source_directory": str(root),
+        "detected_kinds": kinds,
+        "env_var_names": env_var_names(texts),
         "file_count": len(files),
         "total_bytes": sum(path.stat().st_size for path in files),
         "file_types": dict(sorted(suffixes.items())),
@@ -146,6 +208,7 @@ def main() -> int:
             "Keyword findings require human review and are not proof of incompatibility.",
             "The scanner does not execute source files or reveal credential values.",
             "Review licensing, external services, side effects, and runtime requirements manually.",
+            "detected_kinds lists every framework seen; confirm the entrypoint with the user.",
         ],
     }
     print(json.dumps(report, indent=2 if args.pretty else None, sort_keys=True))
