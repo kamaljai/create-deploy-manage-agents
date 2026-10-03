@@ -1,3 +1,12 @@
+# @ui-begin
+FROM node:22.23.3-bookworm-slim AS ui
+WORKDIR /ui
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY ui ./
+RUN npm run build
+
+# @ui-end
 FROM python:3.12.10-slim-bookworm AS builder
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
@@ -24,6 +33,10 @@ RUN python -m pip install --no-cache-dir /wheels/*.whl \
     && rm -rf /wheels
 COPY --chown=10001:10001 skill_source ./skill_source
 COPY --chown=10001:10001 skill-provenance.json ./skill-provenance.json
+# @ui-begin
+COPY --from=ui --chown=10001:10001 /ui/dist ./ui/dist
+ENV UI_DIST=/app/ui/dist
+# @ui-end
 
 USER 10001:10001
 EXPOSE 8080

@@ -79,6 +79,12 @@ def create_app(
         )
         return response
 
+    # @ui-begin
+    from .a2ui import mount_ui
+
+    mount_ui(app, service, title="__AGENT_NAME__")
+
+    # @ui-end
     return app
 
 

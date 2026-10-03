@@ -8,6 +8,14 @@ The generated baseline is a Python 3.12 service with an HTTP endpoint and/or CLI
 - `GET /readyz`: validate local configuration; do not make a billable model request.
 - `POST /v1/invoke`: validate the agreed input, call the application service, validate output, and return a correlation/job ID.
 
+With `--ui a2ui`, also:
+
+- `GET /a2ui/surface`: initial A2UI v0.9 messages for the task surface.
+- `POST /a2ui/action`: accepts an A2UI `action` and streams `updateDataModel` messages as JSON lines.
+- `GET /ui`: the bundled `@a2ui/lit` web client.
+
+See [a2ui.md](a2ui.md).
+
 Use explicit request/response models. The scaffold's generic `input` field is only a safe starting point and must be replaced when the agreed contract is more specific.
 
 ## Prompt packaging

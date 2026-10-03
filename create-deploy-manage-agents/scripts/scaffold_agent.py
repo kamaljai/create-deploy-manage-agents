@@ -14,6 +14,9 @@ from pathlib import Path
 PROVIDERS = {"gemini", "ollama", "openai", "anthropic"}
 TRANSPORTS = {"http", "cli", "both"}
 RUNTIMES = {"docker", "microvm"}
+UIS = {"a2ui", "none"}
+UI_FILES = ("ui", "src/skill_agent/a2ui.py", "tests/test_a2ui.py")
+UI_BLOCK_FILES = ("Dockerfile", "README.md", "src/skill_agent/api.py")
 # Source kind -> framework runner asset (None: skill packaged as a system prompt).
 SOURCE_KINDS = {
     "skill": None,
@@ -25,8 +28,10 @@ TEXT_SUFFIXES = {
     ".dockerignore",
     ".example",
     ".md",
+    ".html",
     ".py",
     ".sh",
+    ".ts",
     ".toml",
     ".txt",
     ".yaml",
@@ -63,6 +68,12 @@ def parse_args() -> argparse.Namespace:
         required=True,
         choices=sorted(RUNTIMES),
         help="docker: plain Docker container; microvm: Docker Sandboxes microVM",
+    )
+    parser.add_argument(
+        "--ui",
+        required=True,
+        choices=sorted(UIS),
+        help="a2ui: serve an A2UI web UI at /ui; none: API/CLI only",
     )
     parser.add_argument("--input-description", required=True)
     parser.add_argument("--output-description", required=True)
@@ -131,6 +142,25 @@ def substitute_tree(root: Path, replacements: dict[str, str]) -> None:
         path.write_text(text, encoding="utf-8")
 
 
+def apply_ui_choice(root: Path, enabled: bool) -> None:
+    """Keep or drop the A2UI files and the marked UI blocks in shared files."""
+    block = re.compile(
+        r"^[ \t]*(?:#|<!--) @ui-begin.*?\n(.*?)^[ \t]*(?:#|<!--) @ui-end.*?\n",
+        re.MULTILINE | re.DOTALL,
+    )
+    for relative in UI_BLOCK_FILES:
+        path = root / relative
+        text = path.read_text(encoding="utf-8")
+        path.write_text(block.sub(r"\1" if enabled else "", text), encoding="utf-8")
+    if not enabled:
+        for relative in UI_FILES:
+            path = root / relative
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+
+
 def main() -> int:
     args = parse_args()
     source_dir = args.source_dir.expanduser().resolve()
@@ -164,6 +194,7 @@ def main() -> int:
         "__OUTPUT_DESCRIPTION__": args.output_description,
     }
     substitute_tree(output_dir, replacements)
+    apply_ui_choice(output_dir, enabled=args.ui == "a2ui")
     if args.runtime == "docker":
         shutil.rmtree(output_dir / "deploy")
     else:
@@ -196,6 +227,7 @@ def main() -> int:
         "model": args.model,
         "transport": args.transport,
         "runtime": args.runtime,
+        "ui": args.ui,
         "input_contract": args.input_description,
         "output_contract": args.output_description,
     }

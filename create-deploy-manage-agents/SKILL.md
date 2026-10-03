@@ -1,6 +1,6 @@
 ---
 name: create-deploy-manage-agents
-description: Package a skill (SKILL.md, local or GitHub) or an existing agent built with Google ADK, CrewAI, or the Anthropic Claude Agent SDK into a runnable, Dockerized agent service, run either as a plain Docker container or inside a Docker Sandboxes microVM. Use when a user asks to containerize, serve, deploy, expose through HTTP or CLI, or turn a skill or agent project into a deployable agent using Gemini, Ollama, OpenAI, or Anthropic Claude. Gather the source, runtime, model provider, input/output contract, data stores, and required API keys; assess portability and safety before generating code; decline or explain remediation when the source cannot be safely or faithfully deployed this way.
+description: Package a skill (SKILL.md, local or GitHub) or an existing agent built with Google ADK, CrewAI, or the Anthropic Claude Agent SDK into a runnable, Dockerized agent service, run either as a plain Docker container or inside a Docker Sandboxes microVM, with an optional A2UI web UI for interacting with the agent and running tasks. Use when a user asks to containerize, serve, deploy, expose through HTTP or CLI, or turn a skill or agent project into a deployable agent using Gemini, Ollama, OpenAI, or Anthropic Claude. Gather the source, runtime, model provider, input/output contract, data stores, and required API keys; assess portability and safety before generating code; decline or explain remediation when the source cannot be safely or faithfully deployed this way.
 ---
 
 # Create, deploy, and manage agents
@@ -16,6 +16,8 @@ Before inspecting or generating code, ask for all missing items in one concise m
 3. **Input:** transport (`HTTP`, `CLI`, or both), payload shape, required fields, attachments, size limits, and one representative example.
 4. **Output:** response shape or MIME type, required fields, error behavior, destination, and one representative example.
 5. **Installation runtime:** plain **Docker** (container on the host Docker engine) or **Docker microVM** (Docker Sandboxes via `sbx`, each agent isolated in its own microVM). Briefly state the trade-off: Docker is simplest and most portable; microVM adds a VM isolation boundary and egress policy, but needs `sbx`, a Docker login, and supported host virtualization.
+
+6. **User interface:** an **A2UI web UI** (the agent serves an [A2UI](https://a2ui.org/) task interface at `/ui` where users fill in the input, run tasks, and see status and results), or **API/CLI only**. Any UI must use A2UI; do not generate a custom HTML/React UI instead. If the user wants a UI, ask which inputs the form should show; default to the request contract's fields.
 
 Always ask the runtime question explicitly, even when the user only said "Docker". Do not default it. Record the answer and follow the matching path in every later step.
 
@@ -96,11 +98,12 @@ python scripts/scaffold_agent.py \
   --model <exact-model-name> \
   --transport <http|cli|both> \
   --runtime <docker|microvm> \
+  --ui <a2ui|none> \
   --input-description '<concise contract>' \
   --output-description '<concise contract>'
 ```
 
-The script refuses to overwrite a non-empty directory. It copies the source (to `skill_source/` for a skill, `agent_source/` for an agent), records provenance including the source kind and runtime, substitutes package settings, and creates a Python/Docker baseline. For an agent kind it also writes `src/skill_agent/runner.py`, a framework runner to wire in as described in [references/agent-frameworks.md](references/agent-frameworks.md). With `--runtime microvm` it emits `deploy/microvm.sh`; with `--runtime docker` that file is omitted. For an existing agent, pass its current provider and model.
+The script refuses to overwrite a non-empty directory. It copies the source (to `skill_source/` for a skill, `agent_source/` for an agent), records provenance including the source kind and runtime, substitutes package settings, and creates a Python/Docker baseline. For an agent kind it also writes `src/skill_agent/runner.py`, a framework runner to wire in as described in [references/agent-frameworks.md](references/agent-frameworks.md). With `--runtime microvm` it emits `deploy/microvm.sh`; with `--runtime docker` that file is omitted. With `--ui a2ui` it includes the A2UI server module, the `ui/` web client, a Node build stage in the Dockerfile, and A2UI tests; with `--ui none` they are left out. For an existing agent, pass its current provider and model.
 
 Then adapt the generated package:
 
@@ -111,7 +114,8 @@ Then adapt the generated package:
 5. Parse and validate structured model output before returning or taking action. Retry malformed output at most once with a corrective prompt.
 6. Add durable state, volumes, idempotency, bounded retries, and a queue only when the confirmed state and run-time answers require them.
 7. Update generated tests to cover the real input/output schema, adapters, and the runner, using fakes with no network calls.
-8. List every confirmed credential and data-store variable in `.env.example` with safe placeholders only. Make `/readyz` and config validation fail clearly when a required one is missing. Inject real values only at runtime.
+8. With the A2UI UI, read [references/a2ui.md](references/a2ui.md). Set `FORM_FIELDS` in `src/skill_agent/a2ui.py` to the agreed inputs, and render structured output as basic-catalog components where it helps. Add named actions only for the task steps the user asked for, each validated like the API.
+9. List every confirmed credential and data-store variable in `.env.example` with safe placeholders only. Make `/readyz` and config validation fail clearly when a required one is missing. Inject real values only at runtime.
 
 Adapt the run instructions to the chosen runtime:
 
@@ -127,7 +131,7 @@ Run every applicable check in [references/verification.md](references/verificati
 1. Validate the source copy and generated provenance.
 2. Run formatting/static checks and unit tests with a fake model gateway or fake framework runner.
 3. Build the Docker image.
-4. Run the container without real credentials on its deterministic health path.
+4. Run the container without real credentials on its deterministic health path. With the A2UI UI, also confirm `/ui` and `/a2ui/surface` load.
 5. If credentials are available through the environment and the user authorizes usage, run one minimal live request against test data stores where they exist; never print a key.
 6. Stop the container gracefully and inspect the final diff.
 
@@ -147,4 +151,5 @@ Lead with what works and include:
 - data stores and state: where each is expected to live, volumes, and persistence
 - exact build and run commands for the chosen runtime (including stop/remove for microVM)
 - request/response example using the agreed contract
+- with the A2UI UI: the `/ui` URL, which fields the form shows, and that it has no authentication (loopback only unless put behind an auth proxy)
 - deliberate limitations and any unverified live-provider or data-store step

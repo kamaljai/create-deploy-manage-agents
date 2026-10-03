@@ -51,3 +51,17 @@ curl -fsS -X POST http://localhost:8080/v1/invoke \
   -d '{"input":{"example":"replace with the agreed input"}}'
 ```
 
+
+<!-- @ui-begin -->
+## A2UI web UI
+
+The agent serves an [A2UI](https://a2ui.org/) v0.9 interface at `http://localhost:8080/ui`. It renders a task form with the `@a2ui/lit` basic catalog; **Run task** sends an A2UI `action` to `POST /a2ui/action`, and the agent streams `updateDataModel` messages (status, then result) back as JSON lines. `GET /a2ui/surface` returns the initial `createSurface` / `updateComponents` / `updateDataModel` messages.
+
+Edit `FORM_FIELDS` in `src/skill_agent/a2ui.py` to match the request contract. For UI development:
+
+```bash
+cd ui && npm ci && npm run dev   # proxies /a2ui to the agent on :8080
+```
+
+The UI has no authentication. Keep it on loopback, or put it behind an authenticating proxy before exposing it.
+<!-- @ui-end -->

@@ -38,6 +38,14 @@
 - Egress denials seen in `sbx policy log` are resolved with the narrowest approved rule or reported.
 - `sbx stop` stops the sandbox; removal is left to the user unless approved.
 
+## A2UI UI (only when chosen)
+
+- `tests/test_a2ui.py` passes: the surface has a `root`, every child ID exists, and the run action streams status then result.
+- `FORM_FIELDS` matches the agreed request contract, and form input goes through the same validation as `/v1/invoke`.
+- `npm ci && npm run build` succeeds in `ui/` (or the Docker `ui` stage builds).
+- `/ui` loads in a browser, **Run task** shows a running status and then the result, and the console has no errors.
+- The UI is bound to loopback or sits behind authentication; unknown action names never reach the agent.
+
 ## Provider smoke test
 
 - The selected key is supplied through the environment, never a file copied into the image.
